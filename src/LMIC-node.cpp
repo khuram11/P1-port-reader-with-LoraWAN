@@ -574,8 +574,8 @@ void onEvent(ev_t ev)
             // Cancel the next scheduled doWork job and re-schedule
             // for immediate execution to prevent that any uplink will
             // have to wait until the current doWork interval ends.
-            os_clearCallback(&doWorkJob);
-            os_setCallback(&doWorkJob, doWorkCallback);
+            // os_clearCallback(&doWorkJob);
+            // os_setCallback(&doWorkJob, doWorkCallback);
             break;
 
         case EV_TXCOMPLETE:
@@ -625,24 +625,24 @@ void onEvent(ev_t ev)
 }
 
 
-static void doWorkCallback(osjob_t* job)
-{
-    // Event hander for doWorkJob. Gets called by the LMIC scheduler.
-    // The actual work is performed in function processWork() which is called below.
+// static void doWorkCallback(osjob_t* job)
+// {
+//     // Event hander for doWorkJob. Gets called by the LMIC scheduler.
+//     // The actual work is performed in function processWork() which is called below.
 
-    ostime_t timestamp = os_getTime();
-    #ifdef USE_SERIAL
-        serial.println();
-        printEvent(timestamp, "doWork job started", PrintTarget::Serial);
-    #endif    
+//     ostime_t timestamp = os_getTime();
+//     #ifdef USE_SERIAL
+//         serial.println();
+//         printEvent(timestamp, "doWork job started", PrintTarget::Serial);
+//     #endif    
 
-    // Do the work that needs to be performed.
-    processWork(timestamp);
+//     // Do the work that needs to be performed.
+//     processWork(timestamp);
 
-    // This job must explicitly reschedule itself for the next run.
-    ostime_t startAt = timestamp + sec2osticks((int64_t)doWorkIntervalSeconds);
-    os_setTimedCallback(&doWorkJob, startAt, doWorkCallback);    
-}
+//     // This job must explicitly reschedule itself for the next run.
+//     ostime_t startAt = timestamp + sec2osticks((int64_t)doWorkIntervalSeconds);
+//     os_setTimedCallback(&doWorkJob, startAt, doWorkCallback);    
+// }
 
 
 lmic_tx_error_t scheduleUplink(uint8_t fPort, uint8_t* data, uint8_t dataLength, bool confirmed = false)
@@ -691,23 +691,10 @@ lmic_tx_error_t scheduleUplink(uint8_t fPort, uint8_t* data, uint8_t dataLength,
 //  ▀▀▀ ▀▀▀ ▀▀▀ ▀ ▀   ▀▀▀ ▀▀▀ ▀▀  ▀▀▀   ▀▀  ▀▀▀ ▀▀▀ ▀▀▀ ▀ ▀
 
 
-static volatile uint16_t counter_ = 0;
-
-uint16_t getCounterValue()
-{
-    // Increments counter and returns the new value.
-    delay(50);         // Fake this takes some time
-    return ++counter_;
-}
-
-void resetCounter()
-{
-    // Reset counter to 0
-    counter_ = 0;
-}
 
 
-void processWork(ostime_t doWorkJobTimeStamp)
+
+void SendUplink(char * payload)
 {
     // This function is called from the doWorkCallback() 
     // callback function when the doWork job is executed.
@@ -726,26 +713,26 @@ void processWork(ostime_t doWorkJobTimeStamp)
         // The counter is increased automatically by getCounterValue()
         // and can be reset with a 'reset counter' command downlink message.
 
-        uint16_t counterValue = getCounterValue();
+       
         ostime_t timestamp = os_getTime();
 
         #ifdef USE_DISPLAY
             // Interval and Counter values are combined on a single row.
             // This allows to keep the 3rd row empty which makes the
             // information better readable on the small display.
-            display.clearLine(INTERVAL_ROW);
-            display.setCursor(COL_0, INTERVAL_ROW);
-            display.print("I:");
-            display.print(doWorkIntervalSeconds);
-            display.print("s");        
-            display.print(" Ctr:");
-            display.print(counterValue);
+            // display.clearLine(INTERVAL_ROW);
+            // display.setCursor(COL_0, INTERVAL_ROW);
+            // display.print("I:");
+            // display.print(doWorkIntervalSeconds);
+            // display.print("s");        
+            // display.print(" Ctr:");
+            // display.print(counterValue);
         #endif
         #ifdef USE_SERIAL
-            printEvent(timestamp, "Input data collected", PrintTarget::Serial);
-            printSpaces(serial, MESSAGE_INDENT);
-            serial.print(F("COUNTER value: "));
-            serial.println(counterValue);
+            // printEvent(timestamp, "Input data collected", PrintTarget::Serial);
+            // printSpaces(serial, MESSAGE_INDENT);
+            // serial.print(F("COUNTER value: "));
+            // serial.println(counterValue);
         #endif    
 
         // For simplicity LMIC-node will try to send an uplink
@@ -766,11 +753,17 @@ void processWork(ostime_t doWorkJobTimeStamp)
         {
             // Prepare uplink payload.
             uint8_t fPort = 10;
-            payloadBuffer[0] = counterValue >> 8;
-            payloadBuffer[1] = counterValue & 0xFF;
-            uint8_t payloadLength = 2;
+            
 
-            scheduleUplink(fPort, payloadBuffer, payloadLength);
+            uint8_t ret= scheduleUplink(fPort, (uint8_t *)payload, strlen(payload));
+            if(ret == LMIC_ERROR_SUCCESS)
+            {
+                Serial.printf("Successfully scheduled the uplink\r\n");
+                Serial.printf("UPLINK : %s\r\n",payload);
+            }else 
+            {
+                Serial.printf("Could not schedule the uplink\r\n");
+            }
         }
     }
 }    
@@ -784,22 +777,32 @@ void processDownlink(ostime_t txCompleteTimestamp, uint8_t fPort, uint8_t* data,
     // Implements a 'reset counter' command that can be sent via a downlink message.
     // To send the reset counter command to the node, send a downlink message
     // (e.g. from the TTN Console) with single byte value resetCmd on port cmdPort.
-
-    const uint8_t cmdPort = 100;
-    const uint8_t resetCmd= 0xC0;
-
-    if (fPort == cmdPort && dataLength == 1 && data[0] == resetCmd)
-    {
-        #ifdef USE_SERIAL
-            printSpaces(serial, MESSAGE_INDENT);
-            serial.println(F("Reset cmd received"));
-        #endif
         ostime_t timestamp = os_getTime();
-        resetCounter();
-        printEvent(timestamp, "Counter reset", PrintTarget::All, false);
-    }          
+        printEvent(timestamp, "Recieved Downlin\r\n", PrintTarget::All, false);       
+        Serial.printf("Downlink : %s ",data);
 }
 
+
+void OnP1Data(void )
+{
+    uint32_t timestamp=os_getTime();
+    printEvent(timestamp,"Data Received from meter \r\n" ,PrintTarget::All, false);
+    String Data;
+    while(Serial1.available())
+    {
+        Data+= Serial1.read();
+    }
+    Serial.printf("Data : %s\r\n",Data);
+    //do some validation on data 
+    //
+    //
+    //
+    //Schedule an uplink with the data 
+    char Payloadbuff[50];
+    sprintf(Payloadbuff,"%s",Data);
+    SendUplink(Payloadbuff);
+
+}
 
 //  █ █ █▀▀ █▀▀ █▀▄   █▀▀ █▀█ █▀▄ █▀▀   █▀▀ █▀█ █▀▄
 //  █ █ ▀▀█ █▀▀ █▀▄   █   █ █ █ █ █▀▀   █▀▀ █ █ █ █
@@ -844,10 +847,9 @@ void setup()
 //  █ █ █▀▀ █▀▀ █▀▄   █▀▀ █▀█ █▀▄ █▀▀   █▀▄ █▀▀ █▀▀ ▀█▀ █▀█
 //  █ █ ▀▀█ █▀▀ █▀▄   █   █ █ █ █ █▀▀   █▀▄ █▀▀ █ █  █  █ █
 //  ▀▀▀ ▀▀▀ ▀▀▀ ▀ ▀   ▀▀▀ ▀▀▀ ▀▀  ▀▀▀   ▀▀  ▀▀▀ ▀▀▀ ▀▀▀ ▀ ▀
-
+    Serial1.begin(115200);
+    Serial.onReceive(OnP1Data);
     // Place code for initializing sensors etc. here.
-
-    resetCounter();
 
 //  █ █ █▀▀ █▀▀ █▀▄   █▀▀ █▀█ █▀▄ █▀▀   █▀▀ █▀█ █▀▄
 //  █ █ ▀▀█ █▀▀ █▀▄   █   █ █ █ █ █▀▀   █▀▀ █ █ █ █
@@ -859,7 +861,7 @@ void setup()
     }
 
     // Schedule initial doWork job for immediate execution.
-    os_setCallback(&doWorkJob, doWorkCallback);
+    // os_setCallback(&doWorkJob, doWorkCallback);
 }
 
 
